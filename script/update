@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 
 import errno
+import json
 import os
+import pipes
+import shlex
 import shutil
 import subprocess
+import tempfile
 
 
 SOURCE_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -18,8 +22,6 @@ CHROMIUMCONTENT_DESTINATION_DIR = os.path.join(SRC_DIR, 'chromiumcontent')
 def main():
     return (write_dot_gclient() or
             gclient_sync() or
-            install_win_toolchain() or
-            import_win_environment() or
             apply_patches() or
             copy_chromiumcontent_files() or
             run_gyp() or
@@ -43,6 +45,10 @@ def chromium_version():
 
 def gclient_sync():
     ensure_nacl_disabled()
+
+    # Some gclient hooks assume that depot_tools is on the path.
+    os.environ['PATH'] = os.path.pathsep.join([DEPOT_TOOLS_DIR, os.environ['PATH']])
+
     gclient = os.path.join(DEPOT_TOOLS_DIR, 'gclient.py')
     os.chdir(CHROMIUM_DIR)
     if subprocess.call([sys.executable, gclient, 'sync']) == 0:
@@ -59,38 +65,6 @@ def ensure_nacl_disabled():
     if 'disable_nacl=1' in os.environ.get('GYP_DEFINES', ''):
         return
     os.environ['GYP_DEFINES'] = ' '.join(['disable_nacl=1', os.environ.get('GYP_DEFINES', '')])
-
-
-def install_win_toolchain():
-    if sys.platform not in ['win32', 'cygwin']:
-        return
-
-    target_dir = os.path.join(SOURCE_ROOT, 'win_toolchain')
-    if os.path.isdir(target_dir):
-        return
-
-    return subprocess.call([chromium_python_path(),
-                            os.path.join(os.path.relpath(SRC_DIR), 'tools',
-                                         'win', 'toolchain', 'toolchain.py'),
-                            '--targetdir', os.path.relpath(target_dir)])
-
-
-def import_win_environment():
-    if sys.platform not in ['win32', 'cygwin']:
-        return
-
-    env_bat = os.path.join(SOURCE_ROOT, 'win_toolchain', 'env.bat')
-    with open(env_bat) as f:
-        for line in f:
-            if not line.startswith('set '):
-                continue
-            key, value = line[4:].strip().split('=', 1)
-            os.environ[key] = value
-
-    # env.bat sets component=shared_library in the environment. We don't want
-    # that.
-    os.environ['GYP_DEFINES'] = \
-        'windows_sdk_path="{0}"'.format(os.environ['WindowsSDKDir'])
 
 
 def copy_chromiumcontent_files():
@@ -141,14 +115,23 @@ def run_gyp():
     if sys.platform in ['win32', 'cygwin']:
       python = chromium_python_path()
 
+    vs2013_runtime_dll_dirs = DownloadVsToolChain()
+
     # gyp_chromium is executed with win32 python shipped by chromium, so it can
     # not understand POSIX-style paths, to make it work we pass must relative
     # paths to it.
     gyp = os.path.join(REL_SRC_DIR, 'build', 'gyp_chromium')
-    return subprocess.call([python, gyp, '-Ichromiumcontent.gypi',
-                            '--depth', REL_SRC_DIR,
-                            os.path.join(REL_CHROMIUMCONTENT_DESTINATION_DIR,
-                                         'chromiumcontent.gyp')])
+    result = subprocess.call([python, gyp, '-Ichromiumcontent.gypi',
+                              '--depth', REL_SRC_DIR,
+                               os.path.join(REL_CHROMIUMCONTENT_DESTINATION_DIR,
+                                            'chromiumcontent.gyp')])
+    if result:
+        return result
+
+    if vs2013_runtime_dll_dirs:
+        x64_runtime, x86_runtime = vs2013_runtime_dll_dirs
+        CopyVsRuntimeDlls(os.path.join(SRC_DIR, 'out'),
+                          (x86_runtime, x64_runtime))
 
 
 def install_win_tool_wrapper():
@@ -178,6 +161,125 @@ def mkdir_p(path):
 def is_newer(destination, source):
     return os.path.exists(destination) and \
         os.path.getmtime(destination) > os.path.getmtime(source)
+
+
+##
+## The following code comes from a newer version of gyp_chromium
+##
+
+
+def GetDesiredVsToolchainHashes():
+  """Load a list of SHA1s corresponding to the toolchains that we want installed
+  to build with."""
+  sha1path = os.path.join(SOURCE_ROOT, 'script', 'toolchain_vs2013.hash')
+  with open(sha1path, 'rb') as f:
+    return f.read().strip().splitlines()
+
+
+def DownloadVsToolChain():
+  """Download the Visual Studio toolchain on Windows.
+
+  If on Windows, request that depot_tools install/update the automatic
+  toolchain, and then use it (unless opted-out) and return a tuple containing
+  the x64 and x86 paths. Otherwise return None.
+  """
+  vs2013_runtime_dll_dirs = None
+  if sys.platform in ('win32', 'cygwin'):
+    temp_handle, data_file = tempfile.mkstemp(suffix='.json')
+    os.close(temp_handle)
+    get_toolchain_args = [
+        sys.executable,
+        os.path.join(SOURCE_ROOT,
+                    'script',
+                    'get_toolchain_if_necessary.py'),
+        '--output-json', data_file,
+      ] + GetDesiredVsToolchainHashes()
+    subprocess.check_call(get_toolchain_args)
+
+    with open(data_file, 'r') as tempf:
+      toolchain_data = json.load(tempf)
+    os.unlink(data_file)
+
+    toolchain = toolchain_data['path']
+    version = toolchain_data['version']
+    version_is_pro = version[-1] != 'e'
+    win8sdk = toolchain_data['win8sdk']
+    wdk = toolchain_data['wdk']
+    # TODO(scottmg): The order unfortunately matters in these. They should be
+    # split into separate keys for x86 and x64. (See CopyVsRuntimeDlls call
+    # below). http://crbug.com/345992
+    vs2013_runtime_dll_dirs = toolchain_data['runtime_dirs']
+
+    os.environ['GYP_MSVS_OVERRIDE_PATH'] = toolchain
+    os.environ['GYP_MSVS_VERSION'] = '2013e'
+    # We need to make sure windows_sdk_path is set to the automated
+    # toolchain values in GYP_DEFINES, but don't want to override any
+    # otheroptions.express
+    # values there.
+    gyp_defines_dict = dict(map(lambda x: x.split('='), shlex.split(os.environ.get('GYP_DEFINES', ''))))
+    gyp_defines_dict['windows_sdk_path'] = win8sdk
+    os.environ['GYP_DEFINES'] = ' '.join('%s=%s' % (k, pipes.quote(str(v)))
+        for k, v in gyp_defines_dict.iteritems())
+    os.environ['WINDOWSSDKDIR'] = win8sdk
+    os.environ['WDK_DIR'] = wdk
+    # Include the VS runtime in the PATH in case it's not machine-installed.
+    runtime_path = ';'.join(vs2013_runtime_dll_dirs)
+    os.environ['PATH'] = runtime_path + ';' + os.environ['PATH']
+    print('Using automatic toolchain in %s (%s edition).' % (
+              toolchain, 'Pro' if version_is_pro else 'Express'))
+  return vs2013_runtime_dll_dirs
+
+
+def CopyVsRuntimeDlls(output_dir, runtime_dirs):
+  """Copies the VS runtime DLLs from the given |runtime_dirs| to the output
+  directory so that even if not system-installed, built binaries are likely to
+  be able to run.
+
+  This needs to be run after gyp has been run so that the expected target
+  output directories are already created.
+  """
+  assert sys.platform.startswith(('win32', 'cygwin'))
+
+  def copy_runtime(target_dir, source_dir, dll_pattern):
+    """Copy both the msvcr and msvcp runtime DLLs, only if the target doesn't
+    exist, but the target directory does exist."""
+    for which in ('p', 'r'):
+      dll = dll_pattern % which
+      target = os.path.join(target_dir, dll)
+      source = os.path.join(source_dir, dll)
+      # If gyp generated to that output dir, and the runtime isn't already
+      # there, then copy it over.
+      if (os.path.isdir(target_dir) and
+          (not os.path.isfile(target) or
+            os.stat(target).st_mtime != os.stat(source).st_mtime)):
+        print 'Copying %s to %s...' % (source, target)
+        if os.path.exists(target):
+          os.unlink(target)
+        shutil.copy2(source, target)
+
+  x86, x64 = runtime_dirs
+  out_debug = os.path.join(output_dir, 'Debug')
+  out_debug_nacl64 = os.path.join(output_dir, 'Debug', 'x64')
+  out_release = os.path.join(output_dir, 'Release')
+  out_release_nacl64 = os.path.join(output_dir, 'Release', 'x64')
+  out_debug_x64 = os.path.join(output_dir, 'Debug_x64')
+  out_release_x64 = os.path.join(output_dir, 'Release_x64')
+
+  if os.path.exists(out_debug) and not os.path.exists(out_debug_nacl64):
+    os.makedirs(out_debug_nacl64)
+  if os.path.exists(out_release) and not os.path.exists(out_release_nacl64):
+    os.makedirs(out_release_nacl64)
+  copy_runtime(out_debug,          x86, 'msvc%s120d.dll')
+  copy_runtime(out_release,        x86, 'msvc%s120.dll')
+  copy_runtime(out_debug_x64,      x64, 'msvc%s120d.dll')
+  copy_runtime(out_release_x64,    x64, 'msvc%s120.dll')
+  copy_runtime(out_debug_nacl64,   x64, 'msvc%s120d.dll')
+  copy_runtime(out_release_nacl64, x64, 'msvc%s120.dll')
+
+
+##
+## End copied gyp_chromium code
+##
 
 
 if __name__ == '__main__':
