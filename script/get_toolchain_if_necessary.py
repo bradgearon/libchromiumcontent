@@ -120,6 +120,7 @@ def SaveTimestampsAndHash(root, sha1):
 
 
 def DelayBeforeRemoving(target_dir):
+  print target_dir
   """A grace period before deleting the out of date toolchain directory."""
   if (os.path.isdir(target_dir) and
       not bool(int(os.environ.get('CHROME_HEADLESS', '0')))):
@@ -182,6 +183,8 @@ def main():
     SaveTimestampsAndHash(target_dir, current_hash)
 
   if options.output_json:
+    targetData = os.path.abspath(os.path.join(target_dir, '..', 'data.json'))
+    print targetData
     shutil.copyfile(os.path.join(target_dir, '..', 'data.json'),
                     options.output_json)
 

@@ -1,0 +1,28 @@
+Index: third_party/ffmpeg/chromium/config/Chromium/win-vs2013/ia32/config.h
+===================================================================
+--- third_party/ffmpeg/chromium/config/Chromium/win-vs2013/ia32/config.h	(revision 232187)
++++ third_party/ffmpeg/chromium/config/Chromium/win-vs2013/ia32/config.h	(working copy)
+@@ -637,6 +637,7 @@
+ #define CONFIG_VP6A_DECODER 0
+ #define CONFIG_VP6F_DECODER 0
+ #define CONFIG_VP8_DECODER 1
++#define CONFIG_VP9_DECODER 0
+ #define CONFIG_VQA_DECODER 0
+ #define CONFIG_WEBP_DECODER 0
+ #define CONFIG_WMV1_DECODER 0
+@@ -812,6 +813,7 @@
+ #define CONFIG_SUBVIEWER_DECODER 0
+ #define CONFIG_SUBVIEWER1_DECODER 0
+ #define CONFIG_TEXT_DECODER 0
++#define CONFIG_LIBZVBI_TELETEXT_DECODER 0
+ #define CONFIG_VPLAYER_DECODER 0
+ #define CONFIG_WEBVTT_DECODER 0
+ #define CONFIG_XSUB_DECODER 0
+@@ -1560,6 +1562,7 @@
+ #define CONFIG_H261_PARSER 0
+ #define CONFIG_H263_PARSER 0
+ #define CONFIG_H264_PARSER 0
++#define CONFIG_DPX_PARSER 0
+ #define CONFIG_MJPEG_PARSER 0
+ #define CONFIG_MLP_PARSER 0
+ #define CONFIG_MPEG4VIDEO_PARSER 0

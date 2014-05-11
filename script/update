@@ -210,7 +210,8 @@ def DownloadVsToolChain():
     # below). http://crbug.com/345992
     vs2013_runtime_dll_dirs = toolchain_data['runtime_dirs']
 
-    os.environ['GYP_MSVS_OVERRIDE_PATH'] = toolchain
+    if not version_is_pro:
+      os.environ['GYP_MSVS_OVERRIDE_PATH'] = toolchain
     os.environ['GYP_MSVS_VERSION'] = version
     # We need to make sure windows_sdk_path is set to the automated
     # toolchain values in GYP_DEFINES, but don't want to override any
@@ -264,6 +265,7 @@ def CopyVsRuntimeDlls(output_dir, runtime_dirs):
   out_release_nacl64 = os.path.join(output_dir, 'Release', 'x64')
   out_debug_x64 = os.path.join(output_dir, 'Debug_x64')
   out_release_x64 = os.path.join(output_dir, 'Release_x64')
+  print(os.path.abspath(x86))
 
   if os.path.exists(out_debug) and not os.path.exists(out_debug_nacl64):
     os.makedirs(out_debug_nacl64)
