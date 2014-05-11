@@ -18,7 +18,15 @@ Index: third_party/ffmpeg/chromium/config/Chromium/win-vs2013/ia32/config.h
  #define CONFIG_VPLAYER_DECODER 0
  #define CONFIG_WEBVTT_DECODER 0
  #define CONFIG_XSUB_DECODER 0
-@@ -1560,6 +1562,7 @@
+@@ -1044,6 +1046,7 @@
+ #define CONFIG_LIBMODPLUG_DEMUXER 0
+ #define CONFIG_LIBNUT_DEMUXER 0
+ #define CONFIG_LIBQUVI_DEMUXER 0
++#define CONFIG_HEVC_DEMUXER 0
+ #define CONFIG_A64MULTI_ENCODER 0
+ #define CONFIG_A64MULTI5_ENCODER 0
+ #define CONFIG_AMV_ENCODER 0
+@@ -1560,6 +1563,7 @@
  #define CONFIG_H261_PARSER 0
  #define CONFIG_H263_PARSER 0
  #define CONFIG_H264_PARSER 0
@@ -26,3 +34,9 @@ Index: third_party/ffmpeg/chromium/config/Chromium/win-vs2013/ia32/config.h
  #define CONFIG_MJPEG_PARSER 0
  #define CONFIG_MLP_PARSER 0
  #define CONFIG_MPEG4VIDEO_PARSER 0
+@@ -1610,4 +1614,5 @@
+ #define CONFIG_LIBRTMPS_PROTOCOL 0
+ #define CONFIG_LIBRTMPT_PROTOCOL 0
+ #define CONFIG_LIBRTMPTE_PROTOCOL 0
++#define CONFIG_LIBSSH_PROTOCOL 0
+ #endif /* FFMPEG_CONFIG_H */
